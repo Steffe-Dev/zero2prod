@@ -1,18 +1,6 @@
-use std::net::TcpListener;
+mod utility;
 
-/// Spin up an instance of the web server and return its address (i.e. http://localhost:XXXXX)
-fn spawn_app() -> String {
-    let bound_addr = TcpListener::bind("127.0.0.1:0")
-        .expect("Failed to bind address")
-        .local_addr()
-        .expect("Failed to retrieve local address");
-    let server = zero2prod::run(&bound_addr).expect("Failed to start server");
-
-    // Tokio spins up a new runtime for each test, shutting down and cleaning up
-    // after the test ran. Therefore, no cleanup needed.
-    tokio::spawn(server);
-    format!("http://127.0.0.1:{}", bound_addr.port())
-}
+use utility::spawn_app;
 
 #[tokio::test]
 async fn health_check_works() {
