@@ -1,26 +1,16 @@
 mod utility;
 
-use sqlx::{Connection, PgConnection};
 use utility::spawn_app;
-use zero2prod::configuration::get_configuration;
 
 #[tokio::test]
 async fn subscribe_returns_a_200_for_valid_form_data() {
     // Arrange
-    let bound_addr = spawn_app();
-    let configuration = get_configuration().expect("Failed to read config");
-    let connection_string = configuration.database.connection_string();
-    // The `Connection` trait MUST be in scope for us to invoke `PgConnection::connect`
-    // - it is not an inherent method of the struct!
-    // The connection has to be marked as mutable to query it
-    let mut connection = PgConnection::connect(&connection_string)
-        .await
-        .expect("Failed to connect to Postgres.");
-    let client = reqwest::Client::new();
+    let app = spawn_app().await;
 
-    let endpoint = format!("{bound_addr}/subscriptions");
+    let endpoint = format!("{}/subscriptions", app.address);
     let body = "name=frans%20bothma&email=frans%40gmail.com";
 
+    let client = reqwest::Client::new();
     // Act
     let response = client
         .post(endpoint)
@@ -34,19 +24,20 @@ async fn subscribe_returns_a_200_for_valid_form_data() {
     assert_eq!(200, response.status().as_u16());
 
     let saved_record = sqlx::query!("SELECT email, name FROM subscriptions",)
-        .fetch_one(&mut connection)
+        .fetch_one(&app.pg_pool)
         .await
         .expect("Failed to fetch the saved subscription.");
 
     assert_eq!(saved_record.email, "frans@gmail.com");
-    assert_eq!(saved_record.name, "frans");
+    assert_eq!(saved_record.name, "frans bothma");
 }
 
 #[tokio::test]
 async fn subscribe_returns_a_400_when_form_data_is_missing() {
     // Arrange
-    let bound_addr = spawn_app();
-    let endpoint = format!("{bound_addr}/subscriptions");
+    let app = spawn_app().await;
+
+    let endpoint = format!("{}/subscriptions", app.address);
 
     let client = reqwest::Client::new();
 
