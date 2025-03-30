@@ -1,11 +1,11 @@
 use actix_web::{
     App, HttpServer,
     dev::Server,
-    middleware::Logger,
     web::{self},
 };
 use sqlx::PgPool;
 use std::net::SocketAddr;
+use tracing_actix_web::TracingLogger;
 
 pub fn run(address: &SocketAddr, db_pool: PgPool) -> Result<Server, std::io::Error> {
     // Wrap the db_pool in a smart, reference-counted, thread-safe pointer,
@@ -14,7 +14,7 @@ pub fn run(address: &SocketAddr, db_pool: PgPool) -> Result<Server, std::io::Err
     // Move the connection into the closure
     let server = HttpServer::new(move || {
         App::new()
-            .wrap(Logger::default())
+            .wrap(TracingLogger::default())
             .route("/health_check", web::get().to(crate::routes::health_check))
             .route("/subscriptions", web::post().to(crate::routes::subscribe))
             // Register DB connection as part of application state
