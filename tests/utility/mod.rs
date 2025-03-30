@@ -6,6 +6,7 @@ use zero2prod::configuration::DatabaseSettings;
 
 pub struct TestApp {
     pub address: String,
+    #[allow(dead_code)]
     pub pg_pool: PgPool,
 }
 
