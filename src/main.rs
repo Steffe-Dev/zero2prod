@@ -5,6 +5,7 @@ use zero2prod::configuration;
 
 #[tokio::main]
 async fn main() -> Result<(), std::io::Error> {
+    zero2prod::telemetry::get_subscriber("zero2prod".into(), "info".into(), std::io::stdout);
     let configuration = configuration::get_configuration().expect("Failed to read config");
     let connection = PgPool::connect(&configuration.database.connection_string())
         .await
