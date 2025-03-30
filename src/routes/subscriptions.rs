@@ -1,3 +1,4 @@
+#![allow(clippy::async_yields_async)]
 use actix_web::{
     HttpResponse, Responder,
     web::{self, Form},
