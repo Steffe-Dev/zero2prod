@@ -10,10 +10,12 @@ chrono = { version = "0.4.40", default-features = false, features = ["clock"] }
 config = "0.15.11"
 secrecy = { version = "0.10.3", features = ["serde"] }
 serde = { version = "1.0.219", features = ["derive"] }
+serde-aux = "4.6.0"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 tracing = { version = "0.1.41", features = ["log"] }
 tracing-actix-web = "0.7.16"
 tracing-bunyan-formatter = "0.3.10"
+tracing-log = "0.2.0"
 tracing-subscriber = { version = "0.3.19", features = ["registry", "env-filter"] }
 uuid = { version = "1.16.0", features = ["v4"] }
 
