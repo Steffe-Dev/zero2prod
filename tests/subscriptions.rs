@@ -77,9 +77,8 @@ async fn subscribe_returns_a_400_when_fields_are_present_but_empty() {
 
     let test_cases = vec![
         ("name=&email=ursula_le_guin%40gmail.com", "empty name"),
-        // TODO: add back when we have email validation
-        // ("name=le%20guin&email=", "empty email"),
-        // ("name=hello&email=definitely-not-email", "invalid email"),
+        ("name=le%20guin&email=", "empty email"),
+        ("name=hello&email=definitely-not-email", "invalid email"),
     ];
 
     for (invalid_body, error_msg) in test_cases {

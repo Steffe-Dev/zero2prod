@@ -8,12 +8,12 @@ use serde::Deserialize;
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::domain::{self, NewSubscriber};
+use crate::domain::NewSubscriber;
 
 #[derive(Deserialize)]
 pub struct SubscriptionForm {
-    name: String,
-    email: String,
+    pub name: String,
+    pub email: String,
 }
 
 #[tracing::instrument(
@@ -25,15 +25,13 @@ pub struct SubscriptionForm {
     )
 )]
 pub async fn subscribe(form: Form<SubscriptionForm>, db_pool: web::Data<PgPool>) -> impl Responder {
-    // TODO: cleanup
-    let parsed_name = domain::SubscriberName::parse(form.name.clone());
-    if parsed_name.is_err() {
-        return HttpResponse::BadRequest();
+    // Implementing a standard library trait for our type conversion makes our intent clear to Rustaceans,
+    // so, very ideomatic.
+    let new_sub = match form.0.try_into() {
+        Ok(new_sub) => new_sub,
+        Err(_) => return HttpResponse::BadRequest(),
     };
-    let new_sub = NewSubscriber {
-        email: form.email.clone(),
-        name: parsed_name.unwrap(),
-    };
+
     // return HttpResponse::BadRequest();
     // We use `get_ref` to get an immutable reference to the `PgPool`
     // wrapped by `web::Data`.
@@ -54,7 +52,7 @@ async fn insert_subscriber(new_sub: &NewSubscriber, db_pool: &PgPool) -> Result<
             VALUES ($1, $2, $3, $4)
         "#,
         Uuid::new_v4(),
-        new_sub.email,
+        new_sub.email.as_ref(),
         new_sub.name.as_ref(),
         Utc::now()
     )
