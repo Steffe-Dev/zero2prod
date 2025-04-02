@@ -1,2 +1,2 @@
 #!/usr/bin/env bash
-cargo watch -x check -x test -x "clippy -- -D warnings" -x run
+cargo watch -x "fix --allow-dirty" -x check -x test -x "clippy -- -D warnings" -x run

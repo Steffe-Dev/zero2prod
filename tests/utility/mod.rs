@@ -4,6 +4,7 @@ use once_cell::sync::Lazy;
 use sqlx::{Connection, Executor, PgConnection, PgPool};
 use uuid::Uuid;
 use zero2prod::configuration::DatabaseSettings;
+use zero2prod::email_client::EmailClient;
 use zero2prod::telemetry;
 
 // Ensure that the `tracing` stack is only initialised once using `once_cell`
@@ -47,8 +48,18 @@ pub async fn spawn_app() -> TestApp {
         zero2prod::configuration::get_configuration().expect("Failed to read config");
     configuration.database.database_name = Uuid::new_v4().to_string();
     let connection_pool = configure_database(&configuration.database).await;
+    let timeout = configuration.email_client.timeout();
+    let email_client = EmailClient::new(
+        configuration
+            .email_client
+            .sender()
+            .expect("Failed to parse sender email"),
+        configuration.email_client.base_url,
+        configuration.email_client.authorisation_token,
+        timeout,
+    );
 
-    let server = zero2prod::startup::run(&bound_addr, connection_pool.clone())
+    let server = zero2prod::startup::run(&bound_addr, connection_pool.clone(), email_client)
         .expect("Failed to start server");
     // Tokio spins up a new runtime for each test, shutting down and cleaning up
     // after the test ran. Therefore, no cleanup needed.
