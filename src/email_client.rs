@@ -3,6 +3,7 @@ use secrecy::{ExposeSecret, SecretString};
 
 use crate::domain::SubscriberEmail;
 
+#[derive(Debug)]
 pub struct EmailClient {
     sender: SubscriberEmail,
     base_url: String,
@@ -35,7 +36,7 @@ impl EmailClient {
     ) -> Result<(), Error> {
         let base_url = Url::parse(&self.base_url).expect("Base url should be valid");
         let url = base_url
-            .join("/email")
+            .join("email")
             .expect("Should be able to join a valid url to a str");
         let request_body = SendEmailRequest {
             from: self.sender.as_ref(),

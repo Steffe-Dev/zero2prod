@@ -1,4 +1,5 @@
 use secrecy::SecretString;
+use wiremock::MockServer;
 use zero2prod::startup::{Application, get_connection_pool};
 
 use once_cell::sync::Lazy;
@@ -28,8 +29,8 @@ static TRACING: Lazy<()> = Lazy::new(|| {
 
 pub struct TestApp {
     pub address: String,
-    #[allow(dead_code)]
     pub pg_pool: PgPool,
+    pub email_server: MockServer,
 }
 
 impl TestApp {
@@ -51,11 +52,16 @@ pub async fn spawn_app() -> TestApp {
     // All other invocations will instead skip execution.
     Lazy::force(&TRACING);
 
+    // Launch a mock server to stand in for Postmark's API
+    let email_server = MockServer::start().await;
+
     let configuration = {
         let mut c = zero2prod::configuration::get_configuration().expect("Failed to read config");
         c.database.database_name = Uuid::new_v4().to_string();
         // Assign random OS port
         c.application.port = 0;
+        // Use the mock server as email API
+        c.email_client.base_url = email_server.uri();
         c
     };
 
@@ -72,6 +78,7 @@ pub async fn spawn_app() -> TestApp {
     TestApp {
         address,
         pg_pool: get_connection_pool(&configuration.database),
+        email_server,
     }
 }
 
