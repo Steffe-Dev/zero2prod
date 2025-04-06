@@ -1,3 +1,4 @@
+use secrecy::SecretString;
 use zero2prod::startup::{Application, get_connection_pool};
 
 use once_cell::sync::Lazy;
@@ -54,7 +55,7 @@ pub async fn spawn_app() -> TestApp {
         let mut c = zero2prod::configuration::get_configuration().expect("Failed to read config");
         c.database.database_name = Uuid::new_v4().to_string();
         // Assign random OS port
-        c.database.port = 0;
+        c.application.port = 0;
         c
     };
 
@@ -76,7 +77,13 @@ pub async fn spawn_app() -> TestApp {
 
 async fn configure_database(config: &DatabaseSettings) -> PgPool {
     // Create DB
-    let mut connection = PgConnection::connect_with(&config.connect_options())
+    let maintenance_settings = DatabaseSettings {
+        database_name: "postgres".to_string(),
+        username: "postgres".to_string(),
+        password: SecretString::from("password"),
+        ..config.clone()
+    };
+    let mut connection = PgConnection::connect_with(&maintenance_settings.connect_options())
         .await
         .expect("Failed to connect to Postgres");
     connection
