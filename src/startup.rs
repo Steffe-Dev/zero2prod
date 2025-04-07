@@ -35,7 +35,12 @@ impl Application {
             configuration.application.host, configuration.application.port
         );
         let bound_addr = TcpListener::bind(address)?.local_addr()?;
-        let server = run(&bound_addr, db_pool, email_client)?;
+        let server = run(
+            &bound_addr,
+            db_pool,
+            email_client,
+            configuration.application.base_url,
+        )?;
 
         Ok(Self {
             server,
@@ -58,24 +63,37 @@ pub fn get_connection_pool(configuration: &DatabaseSettings) -> PgPool {
     PgPoolOptions::new().connect_lazy_with(configuration.connect_options())
 }
 
+// We need to define a wrapper type in order to retrieve the URL
+// in the `subscribe` handler.
+// Retrieval from the context, in actix-web, is type-based: using
+// a raw `String` would expose us to conflicts.
+pub struct ApplicationBaseUrl(pub String);
+
 fn run(
     address: &SocketAddr,
     db_pool: PgPool,
     email_client: EmailClient,
+    base_url: String,
 ) -> Result<Server, std::io::Error> {
     // Wrap the db_pool in a smart, reference-counted, thread-safe pointer,
     // such that various instances of the app can share the same db connection
     let db_pool = web::Data::new(db_pool);
     let email_client = web::Data::new(email_client);
+    let base_url = web::Data::new(ApplicationBaseUrl(base_url));
     // Move the connection into the closure
     let server = HttpServer::new(move || {
         App::new()
             .wrap(TracingLogger::default())
             .route("/health_check", web::get().to(crate::routes::health_check))
             .route("/subscriptions", web::post().to(crate::routes::subscribe))
+            .route(
+                "/subscriptions/confirm",
+                web::get().to(crate::routes::confirm),
+            )
             // Register DB connection as part of application state
             .app_data(web::Data::clone(&db_pool))
             .app_data(web::Data::clone(&email_client))
+            .app_data(web::Data::clone(&base_url))
     })
     .bind(address)?
     .run();

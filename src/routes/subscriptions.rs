@@ -4,11 +4,12 @@ use actix_web::{
     web::{self, Form},
 };
 use chrono::Utc;
+use rand::{Rng, distr::Alphanumeric};
 use serde::Deserialize;
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::{domain::NewSubscriber, email_client::EmailClient};
+use crate::{domain::NewSubscriber, email_client::EmailClient, startup::ApplicationBaseUrl};
 
 #[derive(Deserialize)]
 pub struct SubscriptionForm {
@@ -18,7 +19,7 @@ pub struct SubscriptionForm {
 
 #[tracing::instrument(
     name = "Adding a new subscriber",
-    skip(form, db_pool),
+    skip(form, db_pool, base_url),
     fields(
         subscriber_email = %form.email,
         subscriber_name = %form.name
@@ -28,6 +29,7 @@ pub async fn subscribe(
     form: Form<SubscriptionForm>,
     db_pool: web::Data<PgPool>,
     email_client: web::Data<EmailClient>,
+    base_url: web::Data<ApplicationBaseUrl>,
 ) -> impl Responder {
     // Implementing a standard library trait for our type conversion makes our intent clear to Rustaceans,
     // so, very ideomatic.
@@ -36,17 +38,18 @@ pub async fn subscribe(
         Err(_) => return HttpResponse::BadRequest(),
     };
 
-    if insert_subscriber(&new_sub, &db_pool).await.is_err() {
+    let subscriber_id = match insert_subscriber(&new_sub, &db_pool).await {
+        Ok(subscriber_id) => subscriber_id,
+        Err(_) => return HttpResponse::InternalServerError(),
+    };
+    let subscription_token = generate_subscription_token();
+    if store_token(&db_pool, subscriber_id, &subscription_token)
+        .await
+        .is_err()
+    {
         return HttpResponse::InternalServerError();
     }
-
-    if email_client
-        .send_email(
-            new_sub.email,
-            "Welcomen",
-            "Welcome to newsletter!",
-            "Welcome to newsletter!",
-        )
+    if send_confirmation_email(email_client, new_sub, &base_url.0, &subscription_token)
         .await
         .is_err()
     {
@@ -56,16 +59,44 @@ pub async fn subscribe(
 }
 
 #[tracing::instrument(
+    name = "Store subscription in the database",
+    skip(db_pool, subscription_token)
+)]
+async fn store_token(
+    db_pool: &PgPool,
+    subscriber_id: Uuid,
+    subscription_token: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query!(
+        r#"
+            INSERT INTO subscription_tokens (subscriber_id, subscription_token) 
+            VALUES ($1, $2)
+        "#,
+        subscriber_id,
+        subscription_token
+    )
+    .execute(db_pool)
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to execute query: {:?}", e);
+        e
+    })?;
+
+    Ok(())
+}
+
+#[tracing::instrument(
     name = "Saving new subscriber details in the database",
     skip(new_sub, db_pool)
 )]
-async fn insert_subscriber(new_sub: &NewSubscriber, db_pool: &PgPool) -> Result<(), sqlx::Error> {
+async fn insert_subscriber(new_sub: &NewSubscriber, db_pool: &PgPool) -> Result<Uuid, sqlx::Error> {
+    let subscriber_id = Uuid::new_v4();
     sqlx::query!(
         r#"
             INSERT INTO subscriptions (id, email, name, subscribed_at, status) 
-            VALUES ($1, $2, $3, $4, 'confirmed')
+            VALUES ($1, $2, $3, $4, 'pending_confirmation')
         "#,
-        Uuid::new_v4(),
+        subscriber_id,
         new_sub.email.as_ref(),
         new_sub.name.as_ref(),
         Utc::now()
@@ -77,5 +108,41 @@ async fn insert_subscriber(new_sub: &NewSubscriber, db_pool: &PgPool) -> Result<
         e
     })?;
 
-    Ok(())
+    Ok(subscriber_id)
+}
+
+#[tracing::instrument(
+    name = "Send a confirmation link to a new subscriber",
+    skip(email_client, new_sub, base_url)
+)]
+async fn send_confirmation_email(
+    email_client: web::Data<EmailClient>,
+    new_sub: NewSubscriber,
+    base_url: &str,
+    subscription_token: &str,
+) -> Result<(), reqwest::Error> {
+    let confirmation_link = format!(
+        "{}/subscriptions/confirm?subscription_token={}",
+        base_url, subscription_token
+    );
+    let html_body = format!(
+        "Welcome to newsletter!<br />\
+            Click <a href=\"{}\">here</a> to confirm your subscription.",
+        confirmation_link
+    );
+    let plain_body = format!(
+        "Welcome to newsletter!\nVisit {} to confirm your subscription.",
+        confirmation_link
+    );
+    email_client
+        .send_email(new_sub.email, "Welcomen", &html_body, &plain_body)
+        .await
+}
+
+fn generate_subscription_token() -> String {
+    let mut rng = rand::rng();
+    std::iter::repeat_with(|| rng.sample(Alphanumeric))
+        .map(char::from)
+        .take(25)
+        .collect()
 }

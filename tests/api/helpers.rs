@@ -1,3 +1,4 @@
+use reqwest::Url;
 use secrecy::SecretString;
 use wiremock::MockServer;
 use zero2prod::startup::{Application, get_connection_pool};
@@ -31,6 +32,13 @@ pub struct TestApp {
     pub address: String,
     pub pg_pool: PgPool,
     pub email_server: MockServer,
+    pub port: u16,
+}
+
+/// Confirmation links embedded in the request to the email API.
+pub struct ConfirmationLinks {
+    pub html: reqwest::Url,
+    pub plain_text: reqwest::Url,
 }
 
 impl TestApp {
@@ -43,6 +51,33 @@ impl TestApp {
             .send()
             .await
             .expect("Failed to execute request")
+    }
+
+    pub fn get_confirmation_links(&self, email_request: &wiremock::Request) -> ConfirmationLinks {
+        let get_link = |s: &str| {
+            let links: Vec<_> = linkify::LinkFinder::new()
+                .links(s)
+                .filter(|l| *l.kind() == linkify::LinkKind::Url)
+                .collect();
+            assert_eq!(links.len(), 1);
+            let confirmation_link = links[0].as_str().to_owned();
+            let mut confirmation_link = Url::parse(&confirmation_link).unwrap();
+            // We don't want to call random web API's
+            assert_eq!(confirmation_link.host_str().unwrap(), "127.0.0.1");
+            confirmation_link.set_port(Some(self.port)).unwrap();
+            confirmation_link
+        };
+
+        // Parse the body as JSON, startign from raw bytes
+        let body: serde_json::Value = serde_json::from_slice(&email_request.body).unwrap();
+
+        let html_link = get_link(&body["HtmlBody"].as_str().unwrap());
+        let text_link = get_link(&body["TextBody"].as_str().unwrap());
+
+        ConfirmationLinks {
+            html: html_link,
+            plain_text: text_link,
+        }
     }
 }
 
@@ -70,7 +105,8 @@ pub async fn spawn_app() -> TestApp {
     let app = Application::build(configuration.clone())
         .await
         .expect("Failed to build app");
-    let address = format!("http://127.0.0.1:{}", app.port());
+    let port = app.port();
+    let address = format!("http://127.0.0.1:{}", port);
 
     // Tokio spins up a new runtime for each test, shutting down and cleaning up
     // after the test ran. Therefore, no cleanup needed.
@@ -79,6 +115,7 @@ pub async fn spawn_app() -> TestApp {
         address,
         pg_pool: get_connection_pool(&configuration.database),
         email_server,
+        port,
     }
 }
 
