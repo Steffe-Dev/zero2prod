@@ -4,12 +4,14 @@ use actix_web::{
     web::{self, Form},
 };
 use chrono::Utc;
-use rand::{Rng, distr::Alphanumeric};
 use serde::Deserialize;
 use sqlx::{Executor, PgPool, Postgres, Row, Transaction};
 use uuid::Uuid;
 
-use crate::{domain::NewSubscriber, email_client::EmailClient, startup::ApplicationBaseUrl};
+use crate::{
+    domain::NewSubscriber, domain::SubcriptionToken, email_client::EmailClient,
+    startup::ApplicationBaseUrl,
+};
 
 #[derive(Deserialize)]
 pub struct SubscriptionForm {
@@ -47,8 +49,8 @@ pub async fn subscribe(
         Ok(subscriber_id) => subscriber_id,
         Err(_) => return HttpResponse::InternalServerError(),
     };
-    let subscription_token = generate_subscription_token();
-    if store_token(&mut transaction, subscriber_id, &subscription_token)
+    let subscription_token = SubcriptionToken::generate();
+    if store_token(&mut transaction, subscriber_id, subscription_token.as_ref())
         .await
         .is_err()
     {
@@ -57,9 +59,14 @@ pub async fn subscribe(
     if transaction.commit().await.is_err() {
         return HttpResponse::InternalServerError();
     }
-    if send_confirmation_email(email_client, new_sub, &base_url.0, &subscription_token)
-        .await
-        .is_err()
+    if send_confirmation_email(
+        email_client,
+        new_sub,
+        &base_url.0,
+        subscription_token.as_ref(),
+    )
+    .await
+    .is_err()
     {
         return HttpResponse::InternalServerError();
     }
@@ -123,9 +130,9 @@ async fn subcriber_exists(
 )]
 async fn insert_subscriber(
     new_sub: &NewSubscriber,
-    mut transaction: &mut Transaction<'_, Postgres>,
+    transaction: &mut Transaction<'_, Postgres>,
 ) -> Result<Uuid, sqlx::Error> {
-    let existing_sub = subcriber_exists(&new_sub, &mut transaction).await?;
+    let existing_sub = subcriber_exists(new_sub, transaction).await?;
 
     let subscriber_id = match existing_sub {
         Some(existing_id) => return Ok(existing_id),
@@ -175,12 +182,4 @@ async fn send_confirmation_email(
     email_client
         .send_email(new_sub.email, "Welcomen", &html_body, &plain_body)
         .await
-}
-
-fn generate_subscription_token() -> String {
-    let mut rng = rand::rng();
-    std::iter::repeat_with(|| rng.sample(Alphanumeric))
-        .map(char::from)
-        .take(25)
-        .collect()
 }

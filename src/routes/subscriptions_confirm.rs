@@ -3,6 +3,8 @@ use actix_web::{HttpResponse, Responder, web};
 use sqlx::PgPool;
 use uuid::Uuid;
 
+use crate::domain::SubcriptionToken;
+
 #[derive(serde::Deserialize)]
 pub struct Parameters {
     subscription_token: String,
@@ -14,7 +16,12 @@ pub async fn confirm(
     parameters: web::Query<Parameters>,
     db_pool: web::Data<PgPool>,
 ) -> impl Responder {
-    let id = match get_subscriber_id_from_token(&db_pool, &parameters.subscription_token).await {
+    let subscripion_token = match SubcriptionToken::parse(parameters.subscription_token.to_owned())
+    {
+        Ok(token) => token,
+        Err(_) => return HttpResponse::BadRequest(),
+    };
+    let id = match get_subscriber_id_from_token(&db_pool, subscripion_token).await {
         Ok(id) => id,
         Err(_) => return HttpResponse::InternalServerError(),
     };
@@ -37,7 +44,7 @@ pub async fn confirm(
 )]
 async fn get_subscriber_id_from_token(
     db_pool: &PgPool,
-    subscription_token: &str,
+    subscription_token: SubcriptionToken,
 ) -> Result<Option<Uuid>, sqlx::Error> {
     let subcriber_id = sqlx::query!(
         r#"
@@ -45,7 +52,7 @@ async fn get_subscriber_id_from_token(
             FROM subscription_tokens
             WHERE subscription_token = $1
         "#,
-        subscription_token,
+        subscription_token.as_ref(),
     )
     .fetch_optional(db_pool)
     .await
