@@ -6,7 +6,7 @@ use actix_web::{
 use chrono::Utc;
 use rand::{Rng, distr::Alphanumeric};
 use serde::Deserialize;
-use sqlx::{Executor, PgPool, Postgres, Transaction};
+use sqlx::{Executor, PgPool, Postgres, Row, Transaction};
 use uuid::Uuid;
 
 use crate::{domain::NewSubscriber, email_client::EmailClient, startup::ApplicationBaseUrl};
@@ -95,11 +95,42 @@ async fn store_token(
     name = "Saving new subscriber details in the database",
     skip(new_sub, transaction)
 )]
-async fn insert_subscriber(
+async fn subcriber_exists(
     new_sub: &NewSubscriber,
     transaction: &mut Transaction<'_, Postgres>,
+) -> Result<Option<Uuid>, sqlx::Error> {
+    let query = sqlx::query!(
+        r#"
+            SELECT id FROM subscriptions WHERE email = $1
+        "#,
+        new_sub.email.as_ref(),
+    );
+    match transaction.fetch_one(query).await {
+        Ok(row) => Ok(row.get("id")),
+        Err(e) => match e {
+            sqlx::Error::RowNotFound => Ok(None),
+            e => {
+                tracing::error!("Failed to execute query: {:?}", e);
+                Err(e)
+            }
+        },
+    }
+}
+
+#[tracing::instrument(
+    name = "Saving new subscriber details in the database",
+    skip(new_sub, transaction)
+)]
+async fn insert_subscriber(
+    new_sub: &NewSubscriber,
+    mut transaction: &mut Transaction<'_, Postgres>,
 ) -> Result<Uuid, sqlx::Error> {
-    let subscriber_id = Uuid::new_v4();
+    let existing_sub = subcriber_exists(&new_sub, &mut transaction).await?;
+
+    let subscriber_id = match existing_sub {
+        Some(existing_id) => return Ok(existing_id),
+        None => Uuid::new_v4(),
+    };
     let query = sqlx::query!(
         r#"
             INSERT INTO subscriptions (id, email, name, subscribed_at, status) 

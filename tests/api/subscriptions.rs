@@ -119,6 +119,27 @@ async fn subscribe_sends_a_confirmation_email_for_valid_data() {
 }
 
 #[tokio::test]
+async fn subscribing_twice_sends_two_confirmation_emails() {
+    // Arrange
+    let app = spawn_app().await;
+    let body = "name=le%20guin&email=ursela_le_guin%40gmail.com";
+
+    Mock::given(path("/email"))
+        .and(method("POST"))
+        .respond_with(ResponseTemplate::new(200))
+        .expect(2)
+        .mount(&app.email_server)
+        .await;
+
+    // Act
+    app.post_subscriptions(body.into()).await;
+    app.post_subscriptions(body.into()).await;
+
+    // Assert
+    // Mock asserts on drop
+}
+
+#[tokio::test]
 async fn subscribe_sends_a_confirmation_email_with_a_link() {
     // Arrange
     let app = spawn_app().await;
