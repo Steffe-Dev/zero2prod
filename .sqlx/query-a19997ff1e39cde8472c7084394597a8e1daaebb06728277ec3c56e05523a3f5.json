@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE subscriptions \n            SET status = 'confirmed'\n            WHERE id = $1 \n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "a19997ff1e39cde8472c7084394597a8e1daaebb06728277ec3c56e05523a3f5"
+}
