@@ -1,11 +1,12 @@
 #![allow(clippy::async_yields_async)]
-use std::fmt::Formatter;
+mod error;
 
 use actix_web::{
-    HttpResponse, ResponseError,
+    HttpResponse,
     web::{self, Form},
 };
 use chrono::Utc;
+use error::SubscribeError;
 use serde::Deserialize;
 use sqlx::{Executor, PgPool, Postgres, Row, Transaction};
 use uuid::Uuid;
@@ -34,39 +35,27 @@ pub async fn subscribe(
     db_pool: web::Data<PgPool>,
     email_client: web::Data<EmailClient>,
     base_url: web::Data<ApplicationBaseUrl>,
-) -> Result<HttpResponse, actix_web::Error> {
+) -> Result<HttpResponse, error::SubscribeError> {
     // Implementing a standard library trait for our type conversion makes our intent clear to Rustaceans,
     // so, very ideomatic.
-    let new_sub = match form.0.try_into() {
-        Ok(new_sub) => new_sub,
-        Err(_) => return Ok(HttpResponse::BadRequest().finish()),
-    };
-
-    let mut transaction = match db_pool.begin().await {
-        Ok(transaction) => transaction,
-        Err(_) => return Ok(HttpResponse::InternalServerError().finish()),
-    };
-
-    let subscriber_id = match insert_subscriber(&new_sub, &mut transaction).await {
-        Ok(subscriber_id) => subscriber_id,
-        Err(_) => return Ok(HttpResponse::InternalServerError().finish()),
-    };
+    let new_sub = form.0.try_into()?;
+    let mut transaction = db_pool.begin().await.map_err(SubscribeError::PgPool)?;
+    let subscriber_id = insert_subscriber(&new_sub, &mut transaction)
+        .await
+        .map_err(SubscribeError::InsertSubcriber)?;
     let subscription_token = SubcriptionToken::generate();
     store_token(&mut transaction, subscriber_id, subscription_token.as_ref()).await?;
-    if transaction.commit().await.is_err() {
-        return Ok(HttpResponse::InternalServerError().finish());
-    }
-    if send_confirmation_email(
+    transaction
+        .commit()
+        .await
+        .map_err(SubscribeError::TransactionCommit)?;
+    send_confirmation_email(
         email_client,
         new_sub,
         &base_url.0,
         subscription_token.as_ref(),
     )
-    .await
-    .is_err()
-    {
-        return Ok(HttpResponse::InternalServerError().finish());
-    }
+    .await?;
     Ok(HttpResponse::Ok().finish())
 }
 
@@ -78,7 +67,7 @@ async fn store_token(
     transaction: &mut Transaction<'_, Postgres>,
     subscriber_id: Uuid,
     subscription_token: &str,
-) -> Result<(), StoreTokenError> {
+) -> Result<(), error::StoreTokenError> {
     let query = sqlx::query!(
         r#"
             INSERT INTO subscription_tokens (subscriber_id, subscription_token) 
@@ -89,46 +78,9 @@ async fn store_token(
     );
     transaction.execute(query).await.map_err(|e| {
         tracing::error!("Failed to execute query: {:?}", e);
-        StoreTokenError(e)
+        error::StoreTokenError(e)
     })?;
 
-    Ok(())
-}
-
-pub struct StoreTokenError(sqlx::Error);
-
-impl ResponseError for StoreTokenError {}
-
-impl std::fmt::Debug for StoreTokenError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        error_chain_fmt(self, f)
-    }
-}
-
-impl std::fmt::Display for StoreTokenError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "A database error was encountered while \
-            trying to store a subscription token."
-        )
-    }
-}
-
-impl std::error::Error for StoreTokenError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        // The compiler transparently casts `&sqlx::Error` into a `&dyn Error`
-        Some(&self.0)
-    }
-}
-
-fn error_chain_fmt(e: &impl std::error::Error, f: &mut Formatter<'_>) -> std::fmt::Result {
-    writeln!(f, "{}/n", e)?;
-    let mut current = e.source();
-    while let Some(cause) = current {
-        writeln!(f, "Caused by:\n\t{}", cause)?;
-        current = cause.source();
-    }
     Ok(())
 }
 
