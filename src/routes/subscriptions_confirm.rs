@@ -16,8 +16,7 @@ pub async fn confirm(
     parameters: web::Query<Parameters>,
     db_pool: web::Data<PgPool>,
 ) -> impl Responder {
-    let subscripion_token = match SubcriptionToken::parse(parameters.subscription_token.to_owned())
-    {
+    let subscripion_token = match parameters.subscription_token.to_owned().try_into() {
         Ok(token) => token,
         Err(_) => return HttpResponse::BadRequest(),
     };

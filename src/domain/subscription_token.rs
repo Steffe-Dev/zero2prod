@@ -11,6 +11,14 @@ impl AsRef<str> for SubcriptionToken {
     }
 }
 
+impl TryFrom<String> for SubcriptionToken {
+    type Error = String;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        SubcriptionToken::parse(value)
+    }
+}
+
 impl SubcriptionToken {
     pub fn generate() -> Self {
         let mut rng = rand::rng();
