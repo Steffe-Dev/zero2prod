@@ -5,6 +5,7 @@ use actix_web::{
     HttpResponse,
     web::{self, Form},
 };
+use anyhow::Context;
 use chrono::Utc;
 use error::SubscribeError;
 use serde::Deserialize;
@@ -38,24 +39,30 @@ pub async fn subscribe(
 ) -> Result<HttpResponse, error::SubscribeError> {
     // Implementing a standard library trait for our type conversion makes our intent clear to Rustaceans,
     // so, very ideomatic.
-    let new_sub = form.0.try_into()?;
-    let mut transaction = db_pool.begin().await.map_err(SubscribeError::PgPool)?;
+    let new_sub = form.0.try_into().map_err(SubscribeError::Validation)?;
+    let mut transaction = db_pool
+        .begin()
+        .await
+        .context("Failed to acquire a Postgres connection form the pool")?;
     let subscriber_id = insert_subscriber(&new_sub, &mut transaction)
         .await
-        .map_err(SubscribeError::InsertSubcriber)?;
+        .context("Failed to insert a new subscriber in the database.")?;
     let subscription_token = SubcriptionToken::generate();
-    store_token(&mut transaction, subscriber_id, subscription_token.as_ref()).await?;
+    store_token(&mut transaction, subscriber_id, subscription_token.as_ref())
+        .await
+        .context("Failed to store the confirmation token for a new subscriber.")?;
     transaction
         .commit()
         .await
-        .map_err(SubscribeError::TransactionCommit)?;
+        .context("Failed to commit SQL transaction to store a new subscriber.")?;
     send_confirmation_email(
         email_client,
         new_sub,
         &base_url.0,
         subscription_token.as_ref(),
     )
-    .await?;
+    .await
+    .context("Failed to send a confirmation email.")?;
     Ok(HttpResponse::Ok().finish())
 }
 
@@ -102,10 +109,7 @@ async fn subcriber_exists(
         Ok(row) => Ok(row.get("id")),
         Err(e) => match e {
             sqlx::Error::RowNotFound => Ok(None),
-            e => {
-                tracing::error!("Failed to execute query: {:?}", e);
-                Err(e)
-            }
+            e => Err(e),
         },
     }
 }
@@ -134,10 +138,7 @@ async fn insert_subscriber(
         new_sub.name.as_ref(),
         Utc::now()
     );
-    transaction.execute(query).await.map_err(|e| {
-        tracing::error!("Failed to execute query: {:?}", e);
-        e
-    })?;
+    transaction.execute(query).await?;
 
     Ok(subscriber_id)
 }
