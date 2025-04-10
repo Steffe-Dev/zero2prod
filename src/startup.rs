@@ -85,6 +85,10 @@ fn run(
         App::new()
             .wrap(TracingLogger::default())
             .route("/health_check", web::get().to(crate::routes::health_check))
+            .route(
+                "/newsletters",
+                web::post().to(crate::routes::publish_newsletter),
+            )
             .route("/subscriptions", web::post().to(crate::routes::subscribe))
             .route(
                 "/subscriptions/confirm",
