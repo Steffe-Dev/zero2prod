@@ -1,5 +1,9 @@
 #![allow(clippy::async_yields_async)]
-use actix_web::{HttpResponse, Responder, web};
+mod error;
+
+use actix_web::{HttpResponse, web};
+use anyhow::Context;
+use error::ConfirmError;
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -15,26 +19,24 @@ pub struct Parameters {
 pub async fn confirm(
     parameters: web::Query<Parameters>,
     db_pool: web::Data<PgPool>,
-) -> impl Responder {
-    let subscripion_token = match parameters.subscription_token.to_owned().try_into() {
-        Ok(token) => token,
-        Err(_) => return HttpResponse::BadRequest(),
-    };
-    let id = match get_subscriber_id_from_token(&db_pool, subscripion_token).await {
-        Ok(id) => id,
-        Err(_) => return HttpResponse::InternalServerError(),
-    };
+) -> Result<HttpResponse, ConfirmError> {
+    let subscripion_token = parameters
+        .subscription_token
+        .to_owned()
+        .try_into()
+        .map_err(ConfirmError::Validation)?;
+    let id = get_subscriber_id_from_token(&db_pool, subscripion_token)
+        .await
+        .context("Failed to get a subscriber in the database with the provided token.")?;
 
     match id {
         // Non-existing token!
-        None => HttpResponse::Unauthorized(),
-        Some(subscriber_id) => {
-            if confirm_subscriber(&db_pool, subscriber_id).await.is_err() {
-                return HttpResponse::InternalServerError();
-            }
-            HttpResponse::Ok()
-        }
+        None => return Err(ConfirmError::Unauthorized),
+        Some(subscriber_id) => confirm_subscriber(&db_pool, subscriber_id)
+            .await
+            .context("Failed to confirm the subcriber in the database.")?,
     }
+    Ok(HttpResponse::Ok().finish())
 }
 
 #[tracing::instrument(
@@ -54,11 +56,7 @@ async fn get_subscriber_id_from_token(
         subscription_token.as_ref(),
     )
     .fetch_optional(db_pool)
-    .await
-    .map_err(|e| {
-        tracing::error!("Failed to execute query: {:?}", e);
-        e
-    })?;
+    .await?;
 
     Ok(subcriber_id.map(|r| r.subscriber_id))
 }
@@ -77,11 +75,7 @@ async fn confirm_subscriber(db_pool: &PgPool, subscriber_id: Uuid) -> Result<(),
         subscriber_id
     )
     .execute(db_pool)
-    .await
-    .map_err(|e| {
-        tracing::error!("Failed to execute query: {:?}", e);
-        e
-    })?;
+    .await?;
 
     Ok(())
 }

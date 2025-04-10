@@ -83,10 +83,10 @@ async fn store_token(
         subscriber_id,
         subscription_token
     );
-    transaction.execute(query).await.map_err(|e| {
-        tracing::error!("Failed to execute query: {:?}", e);
-        error::StoreTokenError(e)
-    })?;
+    transaction
+        .execute(query)
+        .await
+        .map_err(error::StoreTokenError)?;
 
     Ok(())
 }

@@ -2,6 +2,8 @@ use std::fmt::Formatter;
 
 use actix_web::{ResponseError, http::StatusCode};
 
+use crate::utility::error_chain_fmt;
+
 #[derive(thiserror::Error)]
 pub enum SubscribeError {
     // `{0}` here is like `self.0`
@@ -70,14 +72,4 @@ impl std::error::Error for StoreTokenError {
         // The compiler transparently casts `&sqlx::Error` into a `&dyn Error`
         Some(&self.0)
     }
-}
-
-fn error_chain_fmt(e: &impl std::error::Error, f: &mut Formatter<'_>) -> std::fmt::Result {
-    writeln!(f, "{}/n", e)?;
-    let mut current = e.source();
-    while let Some(cause) = current {
-        writeln!(f, "Caused by:\n\t{}", cause)?;
-        current = cause.source();
-    }
-    Ok(())
 }

@@ -148,3 +148,60 @@ async fn clicking_a_confirmation_link_twice_has_no_further_effect() {
     assert_eq!(saved_record.name, "le guin");
     assert_eq!(saved_record.status, "confirmed");
 }
+
+#[tokio::test]
+async fn confirm_fails_if_there_is_a_fatal_database_error_in_subscription_tokens() {
+    // Arrange
+    let app = spawn_app().await;
+    let token = SubcriptionToken::generate();
+
+    // Sabotage the database
+    sqlx::query!("ALTER TABLE subscription_tokens DROP COLUMN subscriber_id;",)
+        .execute(&app.pg_pool)
+        .await
+        .unwrap();
+
+    // Act
+    let response = reqwest::get(&format!(
+        "{}/subscriptions/confirm?subscription_token={}",
+        &app.address,
+        token.as_ref()
+    ))
+    .await
+    .unwrap();
+
+    // Assert
+    assert_eq!(response.status().as_u16(), 500);
+}
+
+#[tokio::test]
+async fn confirm_fails_if_there_is_a_fatal_database_error_in_subscriptions() {
+    // Arrange
+    let app = spawn_app().await;
+    let body = "name=le%20guin&email=ursula_le_guin%40gmail.com";
+
+    Mock::given(path("/email"))
+        .and(method("POST"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&app.email_server)
+        .await;
+
+    app.post_subscriptions(body.into()).await;
+
+    // Assert
+    // Get the first intercepted request
+    let email_request = &app.email_server.received_requests().await.unwrap()[0];
+    let links = app.get_confirmation_links(email_request);
+
+    // Sabotage the database
+    sqlx::query!("ALTER TABLE subscriptions DROP COLUMN status;",)
+        .execute(&app.pg_pool)
+        .await
+        .unwrap();
+
+    // Act
+    let response = reqwest::get(links.html.clone()).await.unwrap();
+
+    // Assert
+    assert_eq!(response.status().as_u16(), 500);
+}
