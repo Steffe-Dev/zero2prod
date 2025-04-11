@@ -9,6 +9,21 @@ impl AsRef<str> for SubscriberEmail {
     }
 }
 
+impl TryFrom<String> for SubscriberEmail {
+    type Error = String;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        SubscriberEmail::parse(value)
+    }
+}
+impl std::fmt::Display for SubscriberEmail {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // We just forward the Display implementation of
+        // the wrapped String.
+        self.0.fmt(f)
+    }
+}
+
 impl SubscriberEmail {
     /// Returns an instance of `SubscriberEmail` if the input satisfies all
     /// our validation constraints on subscriber emails.

@@ -6,6 +6,8 @@ use zero2prod::startup::{Application, get_connection_pool};
 use once_cell::sync::Lazy;
 use sqlx::{Connection, Executor, PgConnection, PgPool};
 use uuid::Uuid;
+use wiremock::matchers::{method, path};
+use wiremock::{Mock, ResponseTemplate};
 use zero2prod::configuration::DatabaseSettings;
 use zero2prod::telemetry;
 
@@ -48,6 +50,16 @@ impl TestApp {
             .post(endpoint)
             .header("Content-Type", "application/x-www-form-urlencoded")
             .body(body)
+            .send()
+            .await
+            .expect("Failed to execute request")
+    }
+
+    pub async fn post_newsletters(&self, body: serde_json::Value) -> reqwest::Response {
+        let endpoint = format!("{}/newsletters", &self.address);
+        reqwest::Client::new()
+            .post(endpoint)
+            .json(&body)
             .send()
             .await
             .expect("Failed to execute request")
@@ -144,4 +156,42 @@ async fn configure_database(config: &DatabaseSettings) -> PgPool {
         .await
         .expect("Failed to migrate the database");
     connection_pool
+}
+
+/// Use the public API of the application under test to create
+/// an unconfirmed subscriber.
+pub async fn create_unconfirmed_subscriber(app: &TestApp) -> ConfirmationLinks {
+    let body = "name=le%20guin&email=ursula_le_guin%40gmail.com";
+    // This mock is scoped to only this function, it gets dropped
+    // at the end, and it's expectations are eagerly validated
+    // This is due to `mount_as_scoped`
+    let _mock_guard = Mock::given(path("/email"))
+        .and(method("POST"))
+        .respond_with(ResponseTemplate::new(200))
+        .named("Create unconfirmed subscriber")
+        .expect(1)
+        .mount_as_scoped(&app.email_server)
+        .await;
+    app.post_subscriptions(body.into())
+        .await
+        .error_for_status()
+        .unwrap();
+
+    let email_request = &app
+        .email_server
+        .received_requests()
+        .await
+        .unwrap()
+        .pop()
+        .unwrap();
+    app.get_confirmation_links(&email_request)
+}
+
+pub async fn create_confirmed_subscriber(app: &TestApp) {
+    let confirmation_link = create_unconfirmed_subscriber(app).await;
+    reqwest::get(confirmation_link.html)
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap();
 }
