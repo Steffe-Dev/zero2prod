@@ -57,9 +57,13 @@ impl TestApp {
 
     pub async fn post_newsletters(&self, body: serde_json::Value) -> reqwest::Response {
         let endpoint = format!("{}/newsletters", &self.address);
+        let (username, password) = self.test_user().await;
         reqwest::Client::new()
             .post(endpoint)
             .json(&body)
+            // Random credentials!
+            // `reqwest` does all the encoding/formatting heavy-lifting for us.
+            .basic_auth(username, Some(password))
             .send()
             .await
             .expect("Failed to execute request")
@@ -90,6 +94,14 @@ impl TestApp {
             html: html_link,
             plain_text: text_link,
         }
+    }
+
+    pub async fn test_user(&self) -> (String, String) {
+        let row = sqlx::query!("SELECT username, password FROM users LIMIT 1",)
+            .fetch_one(&self.pg_pool)
+            .await
+            .expect("Failed to create test users.");
+        (row.username, row.password)
     }
 }
 
@@ -123,12 +135,27 @@ pub async fn spawn_app() -> TestApp {
     // Tokio spins up a new runtime for each test, shutting down and cleaning up
     // after the test ran. Therefore, no cleanup needed.
     let _ = tokio::spawn(app.run_until_stopped());
-    TestApp {
+    let test_app = TestApp {
         address,
         pg_pool: get_connection_pool(&configuration.database),
         email_server,
         port,
-    }
+    };
+    add_test_user(&test_app.pg_pool).await;
+    test_app
+}
+
+async fn add_test_user(pool: &PgPool) {
+    sqlx::query!(
+        "INSERT INTO users (user_id, username, password)
+        VALUES ($1, $2, $3)",
+        Uuid::new_v4(),
+        Uuid::new_v4().to_string(),
+        Uuid::new_v4().to_string(),
+    )
+    .execute(pool)
+    .await
+    .expect("Failed to create test user.");
 }
 
 async fn configure_database(config: &DatabaseSettings) -> PgPool {
