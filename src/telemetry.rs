@@ -1,3 +1,4 @@
+use tokio::task::JoinHandle;
 use tracing::{Subscriber, subscriber::set_global_default};
 use tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer};
 use tracing_subscriber::{EnvFilter, Registry, fmt::MakeWriter, layer::SubscriberExt};
@@ -41,4 +42,16 @@ pub fn init_subscriber(subscriber: impl Subscriber + Send + Sync) {
     // `set_global_default` can be used by applications to specify what subscriber should
     // be used to process spans
     set_global_default(subscriber).expect("Failed to set subscriber");
+}
+
+// Just copied trait bounds and signature from `spawn_blocking`
+pub fn spawn_blocking_with_tracing<F, R>(f: F) -> JoinHandle<R>
+where
+    F: FnOnce() -> R + Send + 'static,
+    R: Send + 'static,
+{
+    // We need to pass in the current span to the spawned thread
+    // for it to have the correct context
+    let current_span = tracing::Span::current();
+    tokio::task::spawn_blocking(move || current_span.in_scope(f))
 }
