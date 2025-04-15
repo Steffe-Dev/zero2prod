@@ -84,6 +84,9 @@ fn run(
     let server = HttpServer::new(move || {
         App::new()
             .wrap(TracingLogger::default())
+            .route("/", web::get().to(crate::routes::home))
+            .route("/login", web::get().to(crate::routes::login_form))
+            .route("/login", web::post().to(crate::routes::login))
             .route("/health_check", web::get().to(crate::routes::health_check))
             .route(
                 "/newsletters",
