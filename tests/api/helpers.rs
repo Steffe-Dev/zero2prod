@@ -39,6 +39,7 @@ pub struct TestApp {
     pub email_server: MockServer,
     pub port: u16,
     pub test_user: TestUser,
+    pub api_client: reqwest::Client,
 }
 
 pub struct TestUser {
@@ -89,7 +90,7 @@ pub struct ConfirmationLinks {
 impl TestApp {
     pub async fn post_subscriptions(&self, body: String) -> reqwest::Response {
         let endpoint = format!("{}/subscriptions", &self.address);
-        reqwest::Client::new()
+        self.api_client
             .post(endpoint)
             .header("Content-Type", "application/x-www-form-urlencoded")
             .body(body)
@@ -100,7 +101,7 @@ impl TestApp {
 
     pub async fn post_newsletters(&self, body: serde_json::Value) -> reqwest::Response {
         let endpoint = format!("{}/newsletters", &self.address);
-        reqwest::Client::new()
+        self.api_client
             .post(endpoint)
             .json(&body)
             // `reqwest` does all the encoding/formatting heavy-lifting for us.
@@ -108,6 +109,33 @@ impl TestApp {
             .send()
             .await
             .expect("Failed to execute request")
+    }
+
+    pub async fn post_login<Body>(&self, body: &Body) -> reqwest::Response
+    where
+        Body: serde::Serialize,
+    {
+        let endpoint = format!("{}/login", &self.address);
+        self.api_client
+            .post(endpoint)
+            // This `reqwest` method makes sure that the body is URL-encoded
+            // and the `Content-Type` header is set accordingly
+            .form(&body)
+            .send()
+            .await
+            .expect("Failed to execute request")
+    }
+
+    pub async fn get_login_html(&self) -> String {
+        let endpoint = format!("{}/login", &self.address);
+        self.api_client
+            .get(&endpoint)
+            .send()
+            .await
+            .expect("Failed to execute request")
+            .text()
+            .await
+            .expect("Could not get the response as text")
     }
 
     pub fn get_confirmation_links(&self, email_request: &wiremock::Request) -> ConfirmationLinks {
@@ -168,12 +196,22 @@ pub async fn spawn_app() -> TestApp {
     // Tokio spins up a new runtime for each test, shutting down and cleaning up
     // after the test ran. Therefore, no cleanup needed.
     let _ = tokio::spawn(app.run_until_stopped());
+
+    let api_client = reqwest::Client::builder()
+        // Prevent `reqwest` from automatically redirecting
+        // for test purposes
+        .redirect(reqwest::redirect::Policy::none())
+        .cookie_store(true)
+        .build()
+        .expect("Failed to build client");
+
     let test_app = TestApp {
         address,
         pg_pool: get_connection_pool(&configuration.database),
         email_server,
         port,
         test_user: TestUser::generate(),
+        api_client,
     };
     test_app.test_user.store(&test_app.pg_pool).await;
     test_app
@@ -242,4 +280,9 @@ pub async fn create_confirmed_subscriber(app: &TestApp) {
         .unwrap()
         .error_for_status()
         .unwrap();
+}
+
+pub fn assert_is_redirect_to(response: &reqwest::Response, location: &str) {
+    assert_eq!(response.status().as_u16(), 303);
+    assert_eq!(response.headers().get("Location").unwrap(), location);
 }

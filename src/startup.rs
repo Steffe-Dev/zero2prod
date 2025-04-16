@@ -1,10 +1,14 @@
 use crate::configuration::{DatabaseSettings, Settings};
 use crate::email_client::EmailClient;
+use actix_web::cookie::Key;
 use actix_web::{
     App, HttpServer,
     dev::Server,
     web::{self},
 };
+use actix_web_flash_messages::FlashMessagesFramework;
+use actix_web_flash_messages::storage::CookieMessageStore;
+use secrecy::{ExposeSecret, SecretString};
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
 use std::io::Error;
@@ -40,6 +44,7 @@ impl Application {
             db_pool,
             email_client,
             configuration.application.base_url,
+            configuration.application.hmac_secret,
         )?;
 
         Ok(Self {
@@ -74,16 +79,21 @@ fn run(
     db_pool: PgPool,
     email_client: EmailClient,
     base_url: String,
+    hmac_secret: SecretString,
 ) -> Result<Server, std::io::Error> {
     // Wrap the db_pool in a smart, reference-counted, thread-safe pointer,
     // such that various instances of the app can share the same db connection
     let db_pool = web::Data::new(db_pool);
     let email_client = web::Data::new(email_client);
     let base_url = web::Data::new(ApplicationBaseUrl(base_url));
+    let secret_key = Key::from(hmac_secret.expose_secret().as_bytes());
+    let message_store = CookieMessageStore::builder(secret_key).build();
+    let message_framework = FlashMessagesFramework::builder(message_store).build();
     // Move the connection into the closure
     let server = HttpServer::new(move || {
         App::new()
             .wrap(TracingLogger::default())
+            .wrap(message_framework.clone())
             .route("/", web::get().to(crate::routes::home))
             .route("/login", web::get().to(crate::routes::login_form))
             .route("/login", web::post().to(crate::routes::login))
@@ -101,9 +111,13 @@ fn run(
             .app_data(web::Data::clone(&db_pool))
             .app_data(web::Data::clone(&email_client))
             .app_data(web::Data::clone(&base_url))
+            .app_data(web::Data::new(HmacSecret(hmac_secret.clone())))
     })
     .bind(address)?
     .run();
 
     Ok(server)
 }
+
+#[derive(Clone)]
+pub struct HmacSecret(pub SecretString);
