@@ -138,6 +138,18 @@ impl TestApp {
             .expect("Could not get the response as text")
     }
 
+    pub async fn get_admin_dashboard_html(&self) -> String {
+        let endpoint = format!("{}/admin/dashboard", &self.address);
+        self.api_client
+            .get(&endpoint)
+            .send()
+            .await
+            .expect("Failed to execute request")
+            .text()
+            .await
+            .expect("Could not get the response as text")
+    }
+
     pub fn get_confirmation_links(&self, email_request: &wiremock::Request) -> ConfirmationLinks {
         let get_link = |s: &str| {
             let links: Vec<_> = linkify::LinkFinder::new()
