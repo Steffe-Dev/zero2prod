@@ -138,13 +138,18 @@ impl TestApp {
             .expect("Could not get the response as text")
     }
 
-    pub async fn get_admin_dashboard_html(&self) -> String {
+    pub async fn get_admin_dashboard(&self) -> reqwest::Response {
         let endpoint = format!("{}/admin/dashboard", &self.address);
         self.api_client
             .get(&endpoint)
             .send()
             .await
             .expect("Failed to execute request")
+    }
+
+    pub async fn get_admin_dashboard_html(&self) -> String {
+        self.get_admin_dashboard()
+            .await
             .text()
             .await
             .expect("Could not get the response as text")
