@@ -138,6 +138,38 @@ impl TestApp {
             .expect("Could not get the response as text")
     }
 
+    pub async fn post_change_password<Body>(&self, body: &Body) -> reqwest::Response
+    where
+        Body: serde::Serialize,
+    {
+        let endpoint = format!("{}/admin/password", &self.address);
+        self.api_client
+            .post(endpoint)
+            // This `reqwest` method makes sure that the body is URL-encoded
+            // and the `Content-Type` header is set accordingly
+            .form(&body)
+            .send()
+            .await
+            .expect("Failed to execute request")
+    }
+
+    pub async fn get_change_password(&self) -> reqwest::Response {
+        let endpoint = format!("{}/admin/password", &self.address);
+        self.api_client
+            .get(&endpoint)
+            .send()
+            .await
+            .expect("Failed to execute request")
+    }
+
+    pub async fn get_change_password_html(&self) -> String {
+        self.get_change_password()
+            .await
+            .text()
+            .await
+            .expect("Should return html as text")
+    }
+
     pub async fn get_admin_dashboard(&self) -> reqwest::Response {
         let endpoint = format!("{}/admin/dashboard", &self.address);
         self.api_client
