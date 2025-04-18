@@ -1,8 +1,10 @@
+use crate::authentication::reject_anonymous_users;
 use crate::configuration::{DatabaseSettings, Settings};
 use crate::email_client::EmailClient;
 use actix_session::SessionMiddleware;
 use actix_session::storage::RedisSessionStore;
 use actix_web::cookie::Key;
+use actix_web::middleware::from_fn;
 use actix_web::{
     App, HttpServer,
     dev::Server,
@@ -107,19 +109,6 @@ async fn run(
             .route("/", web::get().to(crate::routes::home))
             .route("/login", web::get().to(crate::routes::login_form))
             .route("/login", web::post().to(crate::routes::login))
-            .route(
-                "/admin/dashboard",
-                web::get().to(crate::routes::admin_dashboard),
-            )
-            .route(
-                "/admin/password",
-                web::get().to(crate::routes::change_password_form),
-            )
-            .route(
-                "/admin/password",
-                web::post().to(crate::routes::change_password),
-            )
-            .route("/admin/logout", web::post().to(crate::routes::log_out))
             .route("/health_check", web::get().to(crate::routes::health_check))
             .route(
                 "/newsletters",
@@ -129,6 +118,17 @@ async fn run(
             .route(
                 "/subscriptions/confirm",
                 web::get().to(crate::routes::confirm),
+            )
+            .service(
+                web::scope("/admin")
+                    .wrap(from_fn(reject_anonymous_users))
+                    .route("/dashboard", web::get().to(crate::routes::admin_dashboard))
+                    .route(
+                        "/password",
+                        web::get().to(crate::routes::change_password_form),
+                    )
+                    .route("/password", web::post().to(crate::routes::change_password))
+                    .route("/logout", web::post().to(crate::routes::log_out)),
             )
             // Register DB connection as part of application state
             .app_data(web::Data::clone(&db_pool))
