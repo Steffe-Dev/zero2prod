@@ -110,10 +110,6 @@ async fn run(
             .route("/login", web::get().to(crate::routes::login_form))
             .route("/login", web::post().to(crate::routes::login))
             .route("/health_check", web::get().to(crate::routes::health_check))
-            .route(
-                "/newsletters",
-                web::post().to(crate::routes::publish_newsletter),
-            )
             .route("/subscriptions", web::post().to(crate::routes::subscribe))
             .route(
                 "/subscriptions/confirm",
@@ -128,7 +124,15 @@ async fn run(
                         web::get().to(crate::routes::change_password_form),
                     )
                     .route("/password", web::post().to(crate::routes::change_password))
-                    .route("/logout", web::post().to(crate::routes::log_out)),
+                    .route("/logout", web::post().to(crate::routes::log_out))
+                    .route(
+                        "/newsletters",
+                        web::post().to(crate::routes::publish_newsletter),
+                    )
+                    .route(
+                        "/newsletters",
+                        web::get().to(crate::routes::get_newsletters_page),
+                    ),
             )
             // Register DB connection as part of application state
             .app_data(web::Data::clone(&db_pool))

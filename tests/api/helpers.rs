@@ -99,13 +99,31 @@ impl TestApp {
             .expect("Failed to execute request")
     }
 
-    pub async fn post_newsletters(&self, body: serde_json::Value) -> reqwest::Response {
-        let endpoint = format!("{}/newsletters", &self.address);
+    pub async fn get_newsletters(&self) -> reqwest::Response {
+        let endpoint = format!("{}/admin/newsletters", &self.address);
+        self.api_client
+            .get(endpoint)
+            .send()
+            .await
+            .expect("Failed to execute request")
+    }
+
+    pub async fn get_newsletters_html(&self) -> String {
+        self.get_newsletters()
+            .await
+            .text()
+            .await
+            .expect("Should return html as text")
+    }
+
+    pub async fn post_newsletters<Body>(&self, body: &Body) -> reqwest::Response
+    where
+        Body: serde::Serialize,
+    {
+        let endpoint = format!("{}/admin/newsletters", &self.address);
         self.api_client
             .post(endpoint)
-            .json(&body)
-            // `reqwest` does all the encoding/formatting heavy-lifting for us.
-            .basic_auth(&self.test_user.username, Some(&self.test_user.password))
+            .form(&body)
             .send()
             .await
             .expect("Failed to execute request")
