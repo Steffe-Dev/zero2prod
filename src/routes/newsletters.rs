@@ -4,7 +4,6 @@ use actix_web::HttpRequest;
 use actix_web::http::header::HeaderMap;
 use actix_web::{HttpResponse, web};
 use anyhow::Context;
-use anyhow::Ok;
 use base64::Engine;
 use error::PublishError;
 use secrecy::SecretString;
@@ -55,7 +54,7 @@ pub async fn publish_newsletter(
         .context("Failed to get confirmed subscribers")?;
     for subscriber in subscribers {
         match subscriber {
-            core::result::Result::Ok(subscriber) => {
+            Ok(subscriber) => {
                 email_client
                     .send_email(
                         &subscriber.email,
@@ -145,7 +144,7 @@ async fn get_confirmed_subscribers(
     let confirmed_subscribers = rows
         .into_iter()
         .map(|r| match r.email.try_into() {
-            core::result::Result::Ok(email) => Ok(ConfirmedSubscriber { email }),
+            Ok(email) => Ok(ConfirmedSubscriber { email }),
             Err(error) => Err(anyhow::anyhow!(error)),
         })
         .collect();

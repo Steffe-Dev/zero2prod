@@ -187,6 +187,15 @@ impl TestApp {
             .expect("Could not get the response as text")
     }
 
+    pub async fn post_logout(&self) -> reqwest::Response {
+        let endpoint = format!("{}/admin/logout", &self.address);
+        self.api_client
+            .post(endpoint)
+            .send()
+            .await
+            .expect("Failed to execute request")
+    }
+
     pub fn get_confirmation_links(&self, email_request: &wiremock::Request) -> ConfirmationLinks {
         let get_link = |s: &str| {
             let links: Vec<_> = linkify::LinkFinder::new()

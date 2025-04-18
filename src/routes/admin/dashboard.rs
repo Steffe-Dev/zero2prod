@@ -2,12 +2,8 @@ use crate::{
     session_state::TypedSession,
     utility::{e500, see_other},
 };
-use actix_web::{
-    HttpResponse,
-    http::header::ContentType,
-    web,
-};
-use anyhow::{Context, Ok};
+use actix_web::{HttpResponse, http::header::ContentType, web};
+use anyhow::Context;
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -20,13 +16,12 @@ pub async fn admin_dashboard(
     let username = if let Some(user_id) = session.get_user_id().map_err(e500)? {
         get_username(user_id, &pool).await.map_err(e500)?
     } else {
-        return core::result::Result::Ok(see_other("/login"));
+        return Ok(see_other("/login"));
     };
-    core::result::Result::Ok(
-        HttpResponse::Ok()
-            .content_type(ContentType::html())
-            .body(format!(
-                r#"
+    Ok(HttpResponse::Ok()
+        .content_type(ContentType::html())
+        .body(format!(
+            r#"
             <!DOCTYPE html>
             <html lang="en">
             <head>
@@ -37,16 +32,22 @@ pub async fn admin_dashboard(
                 <p>Welcome {username}!</p>
                 <p>Available actions:</p>
                 <ol>
-                <li><a href="/admin/password">Change password</a></li>
+                <li>
+                    <a href="/admin/password">Change password</a>
+                </li>
+                <li>
+                    <form name="logoutForm" action="/admin/logout" method="post">
+                        <input type="submit" value="Logout">
+                    </form>
+                </li>
                 </ol>
             </body>
             </html>
             "#
-            )),
-    )
+        )))
 }
 
-async fn get_username(user_id: Uuid, pool: &PgPool) -> Result<String, anyhow::Error> {
+pub async fn get_username(user_id: Uuid, pool: &PgPool) -> Result<String, anyhow::Error> {
     let row = sqlx::query!(
         r#"
         SELECT username

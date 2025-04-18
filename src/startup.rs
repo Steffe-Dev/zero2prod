@@ -119,6 +119,7 @@ async fn run(
                 "/admin/password",
                 web::post().to(crate::routes::change_password),
             )
+            .route("/admin/logout", web::post().to(crate::routes::log_out))
             .route("/health_check", web::get().to(crate::routes::health_check))
             .route(
                 "/newsletters",
