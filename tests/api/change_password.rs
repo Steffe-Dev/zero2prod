@@ -41,11 +41,7 @@ async fn new_password_fields_must_match() {
     let another_new_password = Uuid::new_v4().to_string();
 
     // Act - Part 1 - Log in
-    let login_body = serde_json::json!({
-        "username": &app.test_user.username,
-        "password": &app.test_user.password,
-    });
-    app.post_login(&login_body).await;
+    app.test_user.login(&app).await;
 
     // Act - Part 2 - Try to change password
     let body = serde_json::json!({
@@ -73,11 +69,7 @@ async fn current_password_must_be_valid() {
     let new_password = Uuid::new_v4().to_string();
 
     // Act - Part 1 - Log in
-    let login_body = serde_json::json!({
-        "username": &app.test_user.username,
-        "password": &app.test_user.password,
-    });
-    app.post_login(&login_body).await;
+    app.test_user.login(&app).await;
 
     // Act - Part 2 - Try to change password
     let body = serde_json::json!({
@@ -101,11 +93,7 @@ async fn new_password_must_be_long_enough() {
     let new_password = "123456789012"; // Only 12 chars
 
     // Act - Part 1 - Log in
-    let login_body = serde_json::json!({
-        "username": &app.test_user.username,
-        "password": &app.test_user.password,
-    });
-    app.post_login(&login_body).await;
+    app.test_user.login(&app).await;
 
     // Act - Part 2 - Try to change password
     let body = serde_json::json!({
@@ -131,11 +119,7 @@ async fn new_password_must_be_short_enough() {
     let new_password = "a".repeat(129); // 129 chars
 
     // Act - Part 1 - Log in
-    let login_body = serde_json::json!({
-        "username": &app.test_user.username,
-        "password": &app.test_user.password,
-    });
-    app.post_login(&login_body).await;
+    app.test_user.login(&app).await;
 
     // Act - Part 2 - Try to change password
     let body = serde_json::json!({
@@ -161,11 +145,7 @@ async fn logout_clears_session_state() {
     let new_password = Uuid::new_v4().to_string();
 
     // Act - Part 1 - Login
-    let login_body = serde_json::json!({
-        "username": &app.test_user.username,
-        "password": &app.test_user.password
-    });
-    let response = app.post_login(&login_body).await;
+    let response = app.test_user.login(&app).await;
     assert_is_redirect_to(&response, "/admin/dashboard");
 
     // Act - Part 2 - Change password

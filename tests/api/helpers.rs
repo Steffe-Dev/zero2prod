@@ -57,6 +57,14 @@ impl TestUser {
         }
     }
 
+    pub async fn login(&self, app: &TestApp) -> reqwest::Response {
+        let login_body = serde_json::json!({
+            "username": &app.test_user.username,
+            "password": &app.test_user.password
+        });
+        app.post_login(&login_body).await
+    }
+
     async fn store(&self, pool: &PgPool) {
         let salt = SaltString::generate(&mut OsRng);
         // Match params of the default password
