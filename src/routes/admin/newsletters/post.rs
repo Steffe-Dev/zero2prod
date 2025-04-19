@@ -6,7 +6,7 @@ use sqlx::PgPool;
 use crate::authentication::UserId;
 use crate::domain::SubscriberEmail;
 use crate::email_client::EmailClient;
-use crate::idempotency::{IdempotencyKey, get_saved_response, save_response};
+use crate::idempotency::{IdempotencyKey, save_response, try_processing};
 use crate::utility::{e400, e500, see_other};
 
 #[derive(serde::Deserialize)]
@@ -36,13 +36,16 @@ pub async fn publish_newsletter(
     } = form.0;
     let idempotency_key: IdempotencyKey = idempotency_key.try_into().map_err(e400)?;
     // Return early if we have a saved response in the database
-    if let Some(saved_response) = get_saved_response(&pool, &idempotency_key, **user_id)
+    let transaction = match try_processing(&pool, &idempotency_key, **user_id)
         .await
         .map_err(e500)?
     {
-        FlashMessage::success("Your newsletter has been published.").send();
-        return Ok(saved_response);
-    }
+        crate::idempotency::NextAction::StartProcessing(t) => t,
+        crate::idempotency::NextAction::ReturnSavedResponse(saved_response) => {
+            success_message().send();
+            return Ok(saved_response);
+        }
+    };
 
     let subscribers = get_confirmed_subscribers(&pool).await.map_err(e500)?;
     for subscriber in subscribers {
@@ -70,9 +73,9 @@ pub async fn publish_newsletter(
             }
         }
     }
-    FlashMessage::success("Your newsletter has been published.").send();
+    success_message().send();
     let response = see_other("/admin/newsletters");
-    let response = save_response(&pool, &idempotency_key, **user_id, response)
+    let response = save_response(transaction, &idempotency_key, **user_id, response)
         .await
         .map_err(e500)?;
     Ok(response)
@@ -110,4 +113,8 @@ async fn get_confirmed_subscribers(
         })
         .collect();
     Ok(confirmed_subscribers)
+}
+
+fn success_message() -> FlashMessage {
+    FlashMessage::success("Your newsletter has been published.")
 }
