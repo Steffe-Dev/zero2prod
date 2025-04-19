@@ -9,6 +9,7 @@ pub async fn get_newsletters_page(
     for m in flash_messages.iter() {
         writeln!(msg_html, "<p><i>{}</i></p>", m.content()).unwrap();
     }
+    let script = include_str!("./disable-submit-button.js");
     Ok(HttpResponse::Ok()
         .content_type(ContentType::html())
         .body(format!(
@@ -22,7 +23,7 @@ pub async fn get_newsletters_page(
             <body>
                 {msg_html}
                 <h1>Publish a newsletter:</h1>
-				<form action="/admin/newsletters" method="post">
+				<form id="publishForm" action="/admin/newsletters" method="post">
 				<label
 					>Title
 					<input
@@ -55,10 +56,13 @@ pub async fn get_newsletters_page(
                     ></textarea>
 				</label>
 				<br />
-				<button type="submit">Publish</button>
+				<button id="submitButton" type="submit">Publish</button>
 				</form>
 				<p><a href="/admin/dashboard">&lt;- Back</a></p>
             </body>
+            <script>
+            {script}
+            </script>
             </html>
             "#
         )))

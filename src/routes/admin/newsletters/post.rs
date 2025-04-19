@@ -3,7 +3,6 @@ use actix_web_flash_messages::FlashMessage;
 use anyhow::Context;
 use sqlx::PgPool;
 
-use crate::authentication::UserId;
 use crate::domain::SubscriberEmail;
 use crate::email_client::EmailClient;
 use crate::utility::{e500, see_other};
@@ -17,16 +16,14 @@ pub struct FormData {
 
 #[tracing::instrument(
     name="Publish a newsletter issue", 
-    skip(form, pool, email_client, user_id),
+    skip(form, pool, email_client),
     fields(username=tracing::field::Empty, user_id=tracing::field::Empty)
 )]
 pub async fn publish_newsletter(
     form: web::Form<FormData>,
     pool: web::Data<PgPool>,
     email_client: web::Data<EmailClient>,
-    user_id: web::ReqData<UserId>,
 ) -> Result<HttpResponse, actix_web::Error> {
-    tracing::Span::current().record("user_id", tracing::field::display(&*user_id));
     let subscribers = get_confirmed_subscribers(&pool).await.map_err(e500)?;
     for subscriber in subscribers {
         match subscriber {
