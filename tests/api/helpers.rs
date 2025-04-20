@@ -1,9 +1,12 @@
 use argon2::password_hash::SaltString;
 use argon2::password_hash::rand_core::OsRng;
 use argon2::{Algorithm, Argon2, Params, PasswordHasher, Version};
+use fake::Fake;
+use fake::faker::internet::en::SafeEmail;
+use fake::faker::name::en::Name;
 use reqwest::Url;
 use secrecy::SecretString;
-use wiremock::MockServer;
+use wiremock::{MockBuilder, MockServer};
 use zero2prod::startup::{Application, get_connection_pool};
 
 use once_cell::sync::Lazy;
@@ -331,7 +334,15 @@ async fn configure_database(config: &DatabaseSettings) -> PgPool {
 /// Use the public API of the application under test to create
 /// an unconfirmed subscriber.
 pub async fn create_unconfirmed_subscriber(app: &TestApp) -> ConfirmationLinks {
-    let body = "name=le%20guin&email=ursula_le_guin%40gmail.com";
+    let name: String = Name().fake();
+    let email: String = SafeEmail().fake();
+    // We are working with multiple subscribers now,
+    // their details must be randomised to avoid conflicts!
+    let body = serde_urlencoded::to_string(&serde_json::json!({
+        "name": name,
+        "email": email
+    }))
+    .unwrap();
     // This mock is scoped to only this function, it gets dropped
     // at the end, and it's expectations are eagerly validated
     // This is due to `mount_as_scoped`
@@ -369,4 +380,9 @@ pub async fn create_confirmed_subscriber(app: &TestApp) {
 pub fn assert_is_redirect_to(response: &reqwest::Response, location: &str) {
     assert_eq!(response.status().as_u16(), 303);
     assert_eq!(response.headers().get("Location").unwrap(), location);
+}
+
+// Short-hand for a common mocking setup
+pub fn when_sending_an_email() -> MockBuilder {
+    Mock::given(path("/email")).and(method("POST"))
 }
