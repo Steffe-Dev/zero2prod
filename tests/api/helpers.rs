@@ -7,6 +7,8 @@ use fake::faker::name::en::Name;
 use reqwest::Url;
 use secrecy::SecretString;
 use wiremock::{MockBuilder, MockServer};
+use zero2prod::email_client::EmailClient;
+use zero2prod::issue_delivery_worker::{ExecutionOutcome, try_execute_task};
 use zero2prod::startup::{Application, get_connection_pool};
 
 use once_cell::sync::Lazy;
@@ -43,6 +45,7 @@ pub struct TestApp {
     pub port: u16,
     pub test_user: TestUser,
     pub api_client: reqwest::Client,
+    pub email_client: EmailClient,
 }
 
 pub struct TestUser {
@@ -251,6 +254,18 @@ impl TestApp {
             plain_text: text_link,
         }
     }
+
+    pub async fn dispatch_all_pending_emails(&self) {
+        loop {
+            if let ExecutionOutcome::EmptyQueue =
+                try_execute_task(&self.pg_pool, &self.email_client)
+                    .await
+                    .unwrap()
+            {
+                break;
+            }
+        }
+    }
 }
 
 /// Spin up an instance of the web server and return its address (i.e. http://localhost:XXXXX)
@@ -299,6 +314,7 @@ pub async fn spawn_app() -> TestApp {
         port,
         test_user: TestUser::generate(),
         api_client,
+        email_client: configuration.email_client.client(),
     };
     test_app.test_user.store(&test_app.pg_pool).await;
     test_app

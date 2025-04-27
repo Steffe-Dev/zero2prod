@@ -64,7 +64,7 @@ pub async fn publish_newsletter(
 
 fn success_message() -> FlashMessage {
     FlashMessage::success(
-        "The newsletter has been accepted - \
+        "The newsletter issue has been accepted - \
                 emails will go out shortly.",
     )
 }
